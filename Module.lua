@@ -1,119 +1,182 @@
-local swordModule = {}
-swordModule.__index = swordModule
-local ComboTable
-local remote = game:GetService("ReplicatedStorage").Remotes.remote
+local katanaModule = {}
+local ContextActionService = game:GetService("ContextActionService")
+local katanaClickRemote = game:GetService("ReplicatedStorage").Remotes.katanaClick
+local katanaEquip = game:GetService("ReplicatedStorage").Remotes.katanaEquip
+local katanaClickRemote = game:GetService("ReplicatedStorage").Remotes.katanaClick
+local katanaDamageRemote = game:GetService("ReplicatedStorage").Remotes.katanaDamage
+local specialAttacksModule = require(game:GetService("ReplicatedStorage").Modules.specialAttacks)
+local RunService = game:GetService("RunService")
+local ACTION_EQUIP = "Equip"
+local ACTION_Attack = "Attack"
+local ACTION_HeavySlash = "HeavySlash"
+local ACTION_PARRY = "Parry"
+local EquipDebounce = os.clock()
+local equipped = false
+local count
+local CollectionService = game:GetService("CollectionService")
+local katanaHitEffects = game:GetService("ReplicatedStorage").Remotes.katanaHitEffects
 
-function swordModule.New(Owner, Damage, Sword, Swing1, Swing2, Swing3, Swing4)
-	local newSword = {}
-	newSword.Damage = Damage
-	newSword.Sword = Sword:Clone()
-	newSword.Owner = Owner
-	newSword.Swing1 = Swing1
-	newSword.Swing2 = Swing2
-	newSword.Swing3 = Swing3
-	newSword.Swing4 = Swing4
-	newSword.Combo = 1
-	newSword.Debounce = false
-	newSword.DebounceTime = 0.55
-	setmetatable(newSword, swordModule)
-	return newSword
-end
+local part = Instance.new("Part")
+local overlapParams = OverlapParams.new()
 
-function swordModule:GiveSword()
-	print(self.Sword)
-	self.Sword.Parent = self.Owner.Backpack
-	self.Sword.Activated:Connect(function()
-		self:Attack()
-	end)
-end
-
-
-local timePassed = os.clock()
-function swordModule:Attack()
-	if self.Debounce == false then
-		self.Debounce = true
-		local char = self.Owner.Character or self.Owner.CharacterAdded:Wait()
-		ComboTable = {
-			self.Swing1,
-			self.Swing2,
-			self.Swing3,
-			self.Swing4
-		}
-		print("test")
-		if (os.clock() - timePassed) >= 1 then 
-			self.Combo = 1
+local function contextActionEquip(actionName, inputState, inputObject)
+	if (os.clock() - EquipDebounce) < 1 then return end
+	local player = game.Players.LocalPlayer
+	count = 1
+	if actionName == ACTION_EQUIP and inputState == Enum.UserInputState.Begin then
+		if equipped == false then
+			equipped = true
+			print("Equipping")
+			katanaModule:EquipKatanaAnimations(player)
+			katanaEquip:FireServer(true)
 		else
-			if self.Combo ~= 4 then
-				self.Combo += 1
-			else
-				self.Combo = 1
-			end
+			equipped = false
+			print("Unequepping")
+			katanaModule:RemoveKatanaAnimations(player)
+			katanaEquip:FireServer(false)
 		end
-		timePassed = os.clock()
-		--print(self.Combo)
-		--print(ComboTable[self.Combo])
-		local anim = char.Humanoid:LoadAnimation(ComboTable[self.Combo])
-		anim:Play()
-		for _,trail in pairs(self.Sword:GetDescendants()) do
-			if trail:IsA("Trail") then
-				trail.Enabled = true
-				task.spawn(function()
-					task.wait(0.6)
-					trail.Enabled = false
-				end)
-			end
-		end
-		self:HitBox()
-		anim.Stopped:Wait()
-		self.Debounce = false
+		EquipDebounce = os.clock()
 	end
 end
 
-function swordModule:HitBox()
-	local overLapParams = OverlapParams.new()
-	local swordSwing = game.ReplicatedStorage.Sounds.swordSwing:Clone()
-	swordSwing.Parent = self.Owner.Character
-	local swordHit
-	swordSwing:Play()
-	local hitBox = Instance.new("Part")
-	hitBox.Parent = self.Owner.Character
-	hitBox.CanCollide = false
-	hitBox.BrickColor = BrickColor.new("Really red")
-	hitBox.Transparency = 0.8
-	hitBox.Size = self.Sword.Handle.Size
-	hitBox.Name = "hitBox"
-	hitBox.CFrame = self.Sword.Handle.CFrame
-	local weld = Instance.new("WeldConstraint")
-	weld.Parent = hitBox
-	weld.Part0 = self.Sword.Handle
-	weld.Part1 = hitBox
-	local playerTable = {}
-	local heartbeat = game:GetService("RunService").Heartbeat:Connect(function()
-		task.wait()
-		for _, v in pairs(workspace:GetPartsInPart(hitBox, overLapParams)) do
-			if not table.find(playerTable, v.Parent) and v.Parent ~= self.Owner.Character and v.Parent:FindFirstChild("Humanoid") then  
-				table.insert(playerTable, v.Parent)
-				print(v.Parent)
-				local humanoid = v.Parent.Humanoid
-				humanoid:TakeDamage(self.Damage)
-				swordHit = game.ReplicatedStorage.Sounds.swordHit:Clone()
-				swordHit.Parent = v.Parent
-				swordHit:Play()
-				task.spawn(function()
-					task.wait(1)
-					swordHit:Destroy()
-				end)
+
+local function contextActionServiceAttack(actionName, inputState, inputObject)
+		if actionName == ACTION_Attack and inputState == Enum.UserInputState.Begin then
+		if equipped == true then
+			local char = game.Players.LocalPlayer.Character
+			if CollectionService:HasTag(char, "Parry") then return end
+			katanaClickRemote:FireServer()
 			end
 		end
-	end)
-	
-	task.spawn(function()
-		task.wait(0.6)
-		hitBox:Destroy()
-		heartbeat:Disconnect()
-		swordSwing:Destroy()
-	end)
-	
 end
 
-return swordModule
+
+
+local function contextActionServiceHeavySlash(actionName, inputState, inputObject)
+	if actionName == ACTION_HeavySlash and inputState == Enum.UserInputState.Begin then
+		if equipped == true then
+			local char = game.Players.LocalPlayer.Character
+			warn("Heavy Slash")
+			specialAttacksModule:HeavySlashClient()
+		end
+	end
+end
+
+local function contextActionServiceParry(actionName, inputState, inputObject)
+	if actionName == ACTION_PARRY and inputState == Enum.UserInputState.Begin then
+		if equipped == true then
+			specialAttacksModule:ClientParry("Start")
+		end
+	elseif actionName == ACTION_PARRY and inputState == Enum.UserInputState.End then
+		if equipped == true then
+			print("ended")
+			specialAttacksModule:ClientParry("Stop")
+		end
+	end
+end
+
+pcall(function()
+	ContextActionService:BindAction(ACTION_EQUIP, contextActionEquip, true, Enum.KeyCode.Q)
+	ContextActionService:BindAction(ACTION_Attack, contextActionServiceAttack, true, Enum.UserInputType.MouseButton1)
+	ContextActionService:BindAction(ACTION_HeavySlash, contextActionServiceHeavySlash, true, Enum.KeyCode.X)
+	ContextActionService:BindAction(ACTION_PARRY, contextActionServiceParry, true, Enum.KeyCode.F)
+end)
+
+local function weldKatana(object, objectToWeldTo)
+	local weld = Instance.new("WeldConstraint")
+	weld.Parent = object
+	weld.Part0 = object
+	weld.Part1 = objectToWeldTo
+end
+
+local AnimSlice1 = Instance.new("Animation")
+AnimSlice1.AnimationId = "rbxassetid://8444462186"
+
+local AnimSlice2 = Instance.new("Animation")
+AnimSlice2.AnimationId = "rbxassetid://8444465075"
+
+local AnimSlice3 = Instance.new("Animation")
+AnimSlice3.AnimationId = "rbxassetid://8444466934"
+
+local AnimSlice4 = Instance.new("Animation")
+AnimSlice4.AnimationId = "rbxassetid://8444873166"
+
+local hitAnim = Instance.new("Animation")
+hitAnim.AnimationId = "rbxassetid://8522440400"
+
+function katanaModule:EquipKatana(player, isEquipped)
+	local char = player.Character
+	self.player = player
+	local katanaName = "KatanaMesh"
+	if isEquipped == true then
+		local katana = game:GetService("ReplicatedStorage").KatanaMesh:Clone()
+		katana.Parent = char
+		self.katana = katana
+		self.katana.CanCollide = false
+		self.katana.CFrame = char.RightHand.CFrame * CFrame.new(0,0,-2) * CFrame.Angles(math.rad(-90),math.rad(180),0)
+		weldKatana(self.katana, char.RightHand)
+	else
+		self.katana:Destroy()
+	end
+end
+
+function katanaModule:EquipKatanaAnimations(player)
+	print(player)
+	local char = player.Character
+	self.char = char
+	if equipped == true then
+		local AnimationScript = char:FindFirstChild("Animate")
+		AnimationScript.idle.Animation1.AnimationId = "rbxassetid://8443255855"
+		AnimationScript.idle.Animation2.AnimationId = "rbxassetid://8443255855"
+		AnimationScript.run.RunAnim.AnimationId = "rbxassetid://8443258584"
+		if char.Humanoid.MoveDirection.Magnitude ~= 0 then
+			print("running")
+			local Anim = Instance.new("Animation")
+			Anim.AnimationId = "rbxassetid://8443258584"
+			local runAnim = char.Humanoid:LoadAnimation(Anim)
+			runAnim:Play()
+		else
+			print("not running")
+			local Anim = Instance.new("Animation")
+			Anim.AnimationId = "rbxassetid://8443255855"
+			local idleAnim = char.Humanoid:LoadAnimation(Anim)
+			idleAnim:Play()
+		end
+	end
+end
+
+function katanaModule:RemoveKatanaAnimations(player)
+	print(player)
+	if equipped == false then
+		local char = player.Character
+		local AnimationScript = char:FindFirstChild("Animate")
+		AnimationScript.idle.Animation1.AnimationId = "http://www.roblox.com/asset/?id=507766388"
+		AnimationScript.idle.Animation2.AnimationId = "http://www.roblox.com/asset/?id=507766666"
+		AnimationScript.run.RunAnim.AnimationId = "http://www.roblox.com/asset/?id=913376220"
+		if char.Humanoid.MoveDirection.Magnitude ~= 0 then
+			print("running")
+			local Anim = Instance.new("Animation")
+			Anim.AnimationId = "http://www.roblox.com/asset/?id=913376220"
+			local runAnim = char.Humanoid:LoadAnimation(Anim)
+			runAnim:Play()
+		else
+			print("not running")
+			local Anim = Instance.new("Animation")
+			Anim.AnimationId = "http://www.roblox.com/asset/?id=507766388"
+			local idleAnim = char.Humanoid:LoadAnimation(Anim)
+			idleAnim:Play()
+		end
+	end
+end
+
+
+
+function katanaModule:ServerReceived(player, Debounce, Cooldown)
+	if table.find(Debounce, player.UserId) ~= nil then
+		--print(player.Name.. " Is Under Debounce")
+	else
+		print("Server Received")
+		katanaClickRemote:FireClient(player)
+		--put hitBox spawning code here
+	end
+end
